@@ -41,12 +41,7 @@ class ImageExtractor:
         self.meta_image = self._get_meta_image(doc)
         if self.meta_image:
             self.meta_image = urljoin_if_valid(article_url, self.meta_image)
-        self.images = [
-            urljoin_if_valid(article_url, u)
-            for u in self._get_images(doc)  # Tried to use top_node, but images
-            # were not found in some cases (times_001.html)
-            if u and u.strip()
-        ]
+        self.images = self._get_images(doc, top_node, article_url)  # Tried to use top_node, but images
         self.top_image = self._get_top_image(doc, top_node, article_url)
 
     def _get_favicon(self, doc: lxml.html.Element) -> str:
