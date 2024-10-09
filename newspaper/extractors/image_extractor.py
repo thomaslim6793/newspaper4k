@@ -86,20 +86,54 @@ class ImageExtractor:
 
         return candidates[0][0] if candidates else ""
 
-    def _get_images(self, doc: lxml.html.Element) -> List[str]:
-        def get_src(image):
-            # account for src, data-src and other attributes
-            srcs = [image.attrib.get(x) for x in image.attrib if "src" in x]
-            srcs = [x for x in srcs if x and not x.startswith("data:")]
-
-            srcs.sort(key=lambda x: 0 if x.lower().startswith("http") else 1)
-
-            return srcs[0] if srcs else None
-
-        images = [get_src(x) for x in parsers.get_tags(doc, tag="img")]
-        images = [x for x in images if x]
-
-        return images
+    def _get_images(self, doc: lxml.html.Element, top_node: lxml.html.Element, article_url: str) -> List[str]:
+        """
+        Get all images in the document that meet the same criteria used for the top image.
+        
+        Args:
+        - doc: lxml HTML document object.
+        - top_node: The top image node to compare distances with.
+        - article_url: The URL of the article, used for resolving relative URLs.
+        
+        Returns:
+        - A list of valid image URLs.
+        """
+        
+        def node_distance(node1, node2):
+            """Calculate the distance between two nodes in the DOM."""
+            path1 = node1.getroottree().getpath(node1).split("/")
+            path2 = node2.getroottree().getpath(node2).split("/")
+            for i, (step1, step2) in enumerate(zip(path1, path2)):
+                if step1 != step2:
+                    return len(path1[i:]) + len(path2[i:])
+            return abs(len(path1) - len(path2))
+        
+        # List to hold valid image URLs
+        valid_images = []
+        
+        # Iterate through all image tags in the document
+        for img in parsers.get_tags(doc, tag="img"):
+            # Skip if there's no src attribute or it's a data URI
+            if not img.get("src") or img.get("src").startswith("data:"):
+                continue
+            
+            # Check the size of the image before including it
+            full_image_url = urljoin_if_valid(article_url, img.get("src"))
+            if not self._check_image_size(full_image_url, article_url):
+                continue
+            
+            # If top_node is provided, calculate the distance from it and prioritize closer images
+            if top_node is not None:
+                distance = node_distance(top_node, img)
+                valid_images.append((full_image_url, distance))
+            else:
+                valid_images.append((full_image_url, 0))  # If no top_node, append with distance 0
+        
+        # Sort images by distance if top_node is used
+        valid_images.sort(key=lambda x: x[1])
+        
+        # Return only the image URLs (filter out the distances)
+        return [img[0] for img in valid_images]
 
     def _get_top_image(
         self, doc: lxml.html.Element, top_node: lxml.html.Element, article_url: str
